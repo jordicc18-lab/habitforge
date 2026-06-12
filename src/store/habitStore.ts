@@ -11,7 +11,6 @@ export function useHabits() {
   useEffect(() => {
     const user = auth.currentUser
     if (!user) return
-
     const ref = collection(db, 'users', user.uid, 'habits')
     const unsub = onSnapshot(ref, (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as Habit))
@@ -29,6 +28,13 @@ export function useHabits() {
       createdAt: today(),
       completedDates: [],
     })
+  }
+
+  const editHabit = async (id: string, data: Partial<Omit<Habit, 'id' | 'createdAt' | 'completedDates'>>) => {
+    const user = auth.currentUser
+    if (!user) return
+    const ref = doc(db, 'users', user.uid, 'habits', id)
+    await updateDoc(ref, data)
   }
 
   const toggleHabit = async (id: string) => {
@@ -55,5 +61,5 @@ export function useHabits() {
     return habit.completedDates.includes(today())
   }
 
-  return { habits, addHabit, toggleHabit, deleteHabit, isCompletedToday }
+  return { habits, addHabit, editHabit, toggleHabit, deleteHabit, isCompletedToday }
 }

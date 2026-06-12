@@ -5,6 +5,7 @@ import type { Habit } from '../types/habit'
 interface HabitContextType {
   habits: Habit[]
   addHabit: (habit: Omit<Habit, 'id' | 'createdAt' | 'completedDates'>) => void
+  editHabit: (id: string, data: Partial<Omit<Habit, 'id' | 'createdAt' | 'completedDates'>>) => void
   toggleHabit: (id: string) => void
   deleteHabit: (id: string) => void
   isCompletedToday: (habit: Habit) => boolean
