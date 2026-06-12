@@ -1,5 +1,6 @@
 import { useHabitContext } from '../context/HabitContext'
 import { CheckSquare, Flame, Trophy, Target } from 'lucide-react'
+import PageTransition from '../components/PageTransition'
 
 function getCurrentStreak(completedDates: string[]) {
   const dates = [...completedDates].sort().reverse()
@@ -51,42 +52,44 @@ function Dashboard() {
   ]
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-white mb-1">Dashboard</h1>
-      <p className="text-gray-400 mb-8">Bienvenido a HabitForge</p>
+    <PageTransition>
+      <div className="pt-14 md:pt-0">
+        <h1 className="text-2xl font-bold text-white mb-1">Dashboard</h1>
+        <p className="text-gray-400 mb-8">Bienvenido a HabitForge</p>
 
-      <div className="grid grid-cols-2 gap-4 mb-8">
-        {stats.map(({ label, value, icon: Icon, color, sub }) => (
-          <div key={label} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-            <Icon className={`${color} mb-3`} size={22} />
-            <p className="text-2xl font-bold text-white">{value}</p>
-            {sub && <p className="text-violet-400 text-sm mt-0.5">{sub}</p>}
-            <p className="text-gray-400 text-sm mt-1">{label}</p>
-          </div>
-        ))}
-      </div>
+        <div className="grid grid-cols-2 gap-4 mb-8">
+          {stats.map(({ label, value, icon: Icon, color, sub }) => (
+            <div key={label} className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+              <Icon className={`${color} mb-3`} size={22} />
+              <p className="text-2xl font-bold text-white">{value}</p>
+              {sub && <p className="text-violet-400 text-sm mt-0.5">{sub}</p>}
+              <p className="text-gray-400 text-sm mt-1">{label}</p>
+            </div>
+          ))}
+        </div>
 
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-        <h2 className="text-white font-semibold mb-4">Hábitos de hoy</h2>
-        {habits.length === 0 ? (
-          <p className="text-gray-500 text-sm">No tienes hábitos. Ve a "Hábitos" para crear uno.</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {habits.map(habit => {
-              const done = isCompletedToday(habit)
-              return (
-                <div key={habit.id} className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${done ? 'bg-violet-400' : 'bg-gray-600'}`} />
-                  <span className={`text-sm ${done ? 'text-gray-400 line-through' : 'text-white'}`}>
-                    {habit.name}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        )}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h2 className="text-white font-semibold mb-4">Hábitos de hoy</h2>
+          {habits.length === 0 ? (
+            <p className="text-gray-500 text-sm">No tienes hábitos. Ve a "Hábitos" para crear uno.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {habits.map(habit => {
+                const done = isCompletedToday(habit)
+                return (
+                  <div key={habit.id} className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${done ? 'bg-violet-400' : 'bg-gray-600'}`} />
+                    <span className={`text-sm ${done ? 'text-gray-400 line-through' : 'text-white'}`}>
+                      {habit.name}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </PageTransition>
   )
 }
 
