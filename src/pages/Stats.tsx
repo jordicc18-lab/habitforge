@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useHabitContext } from '../context/HabitContext'
 import PageTransition from '../components/PageTransition'
 
@@ -30,44 +31,48 @@ function CircleProgress({ pct, color, size = 80 }: { pct: number, color: string,
   const r = (size - 10) / 2
   const circumference = 2 * Math.PI * r
   const offset = circumference - (pct / 100) * circumference
-
   return (
     <svg width={size} height={size} className="rotate-[-90deg]">
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1f2937" strokeWidth={8} />
-      <circle
-        cx={size/2} cy={size/2} r={r} fill="none"
-        stroke={color} strokeWidth={8}
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-        strokeLinecap="round"
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={8}
+        strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round"
         style={{ transition: 'stroke-dashoffset 0.5s ease' }}
       />
     </svg>
   )
 }
 
+const PERIODS = [
+  { label: '1 sem', days: 7 },
+  { label: '2 sem', days: 14 },
+  { label: '1 mes', days: 30 },
+  { label: '3 mes', days: 90 },
+  { label: '6 mes', days: 180 },
+  { label: '1 año', days: 365 },
+]
+
 function Stats() {
   const { habits } = useHabitContext()
+  const [selectedPeriod, setSelectedPeriod] = useState(28)
 
   const today = new Date().toISOString().split('T')[0]
   const completedToday = habits.filter(h => h.completedDates.includes(today)).length
   const totalToday = habits.length
   const pctToday = totalToday === 0 ? 0 : Math.round((completedToday / totalToday) * 100)
-
   const totalCompletions = habits.reduce((acc, h) => acc + h.completedDates.length, 0)
   const bestStreak = Math.max(0, ...habits.map(h => getBestStreak(h.completedDates)))
   const currentStreak = Math.max(0, ...habits.map(h => getCurrentStreak(h.completedDates)))
 
-  const last4Weeks = Array.from({ length: 28 }, (_, i) => {
+  const chartData = Array.from({ length: selectedPeriod }, (_, i) => {
     const d = new Date()
-    d.setDate(d.getDate() - (27 - i))
+    d.setDate(d.getDate() - (selectedPeriod - 1 - i))
     const dateStr = d.toISOString().split('T')[0]
     const completed = habits.filter(h => h.completedDates.includes(dateStr)).length
     const pct = habits.length === 0 ? 0 : Math.round((completed / habits.length) * 100)
     return { dateStr, pct }
   })
 
-  const maxPct = Math.max(...last4Weeks.map(d => d.pct), 1)
+  const maxPct = Math.max(...chartData.map(d => d.pct), 1)
 
   return (
     <PageTransition>
@@ -96,10 +101,24 @@ function Stats() {
           </div>
         </div>
 
+        {/* Gráfica con selector de periodo */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
-          <h2 className="text-white font-semibold mb-4">Últimas 4 semanas</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-white font-semibold">Progreso</h2>
+            <div className="flex gap-1">
+              {PERIODS.map(p => (
+                <button
+                  key={p.days}
+                  onClick={() => setSelectedPeriod(p.days)}
+                  className={`px-2 py-1 rounded-lg text-xs transition-colors ${selectedPeriod === p.days ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex items-end gap-0.5 h-24">
-            {last4Weeks.map((d, i) => (
+            {chartData.map((d, i) => (
               <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
                 <div
                   className="w-full rounded-t-sm transition-all"
@@ -113,25 +132,29 @@ function Stats() {
             ))}
           </div>
           <div className="flex justify-between mt-2">
-            <span className="text-xs text-gray-500">Hace 4 sem</span>
+            <span className="text-xs text-gray-500">Hace {selectedPeriod} días</span>
             <span className="text-xs text-gray-500">Hoy</span>
           </div>
         </div>
 
+        {/* Círculos de porcentaje */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <h2 className="text-white font-semibold mb-4">Progreso por hábito</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-white font-semibold">Por hábito</h2>
+            <span className="text-gray-500 text-xs">Últimos {selectedPeriod} días</span>
+          </div>
           {habits.length === 0 ? (
             <p className="text-gray-500 text-sm">No tienes hábitos todavía</p>
           ) : (
             <div className="grid grid-cols-2 gap-4">
               {habits.map(habit => {
-                const last30 = Array.from({ length: 30 }, (_, i) => {
+                const periodDates = Array.from({ length: selectedPeriod }, (_, i) => {
                   const d = new Date()
                   d.setDate(d.getDate() - i)
                   return d.toISOString().split('T')[0]
                 })
-                const completed = last30.filter(d => habit.completedDates.includes(d)).length
-                const pct = Math.round((completed / 30) * 100)
+                const completed = periodDates.filter(d => habit.completedDates.includes(d)).length
+                const pct = Math.round((completed / selectedPeriod) * 100)
                 return (
                   <div key={habit.id} className="flex flex-col items-center gap-2">
                     <div className="relative">
@@ -141,7 +164,7 @@ function Stats() {
                       </div>
                     </div>
                     <p className="text-white text-xs text-center font-medium">{habit.name}</p>
-                    <p className="text-gray-500 text-xs">{completed}/30 días</p>
+                    <p className="text-gray-500 text-xs">{completed}/{selectedPeriod} días</p>
                   </div>
                 )
               })}
