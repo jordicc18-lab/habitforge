@@ -30,9 +30,9 @@ export interface Reward {
 export interface ScheduleItem {
   id: string
   title: string
-  day: number
-  startTime: string
-  endTime: string
+  day: number // 0 = Lunes, 6 = Domingo
+  startTime: string // "18:00"
+  endTime: string // "19:00"
   color: string
   category: string
 }

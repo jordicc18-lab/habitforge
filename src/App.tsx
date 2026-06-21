@@ -8,6 +8,7 @@ import { ThemeProvider } from './context/ThemeContext'
 import Sidebar from './components/Sidebar'
 import Dashboard from './pages/Dashboard'
 import Habits from './pages/Habits'
+import Schedule from './pages/Schedule'
 import Calendar from './pages/Calendar'
 import Stats from './pages/Stats'
 import Achievements from './pages/Achievements'
@@ -51,6 +52,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/habits" element={<Habits />} />
+                <Route path="/schedule" element={<Schedule />} />
                 <Route path="/calendar" element={<Calendar />} />
                 <Route path="/stats" element={<Stats />} />
                 <Route path="/achievements" element={<Achievements />} />
