@@ -14,7 +14,7 @@ function Schedule() {
   const [items, setItems] = useState<ScheduleItem[]>([])
   const [view, setView] = useState<'grid' | 'list'>('list')
   const [showForm, setShowForm] = useState(false)
-  const [selectedDay, setSelectedDay] = useState<number | null>(null)
+  const [, setSelectedDay] = useState<number | null>(null)
   const [title, setTitle] = useState('')
   const [day, setDay] = useState(0)
   const [startTime, setStartTime] = useState('09:00')
