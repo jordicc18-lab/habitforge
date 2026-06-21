@@ -27,3 +27,13 @@ export interface Reward {
   unlocked: boolean
   createdAt: string
 }
+
+export interface ScheduleItem {
+  id: string
+  title: string
+  day: number
+  startTime: string
+  endTime: string
+  color: string
+  category: string
+}
