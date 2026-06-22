@@ -27,6 +27,7 @@ export interface Reward {
   unlocked: boolean
   createdAt: string
 }
+
 export interface ScheduleItem {
   id: string
   title: string
@@ -35,4 +36,13 @@ export interface ScheduleItem {
   endTime: string // "19:00"
   color: string
   category: string
+}
+
+export interface TodoItem {
+  id: string
+  text: string
+  date: string
+  color: string
+  completed: boolean
+  createdAt: string
 }
