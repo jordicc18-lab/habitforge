@@ -50,7 +50,7 @@ function Sidebar() {
         </nav>
       </aside>
 
-      <aside className="hidden md:flex w-64 min-h-screen bg-gray-900 border-r border-gray-800 flex-col p-4">
+      <aside className="hidden md:flex w-64 h-screen sticky top-0 bg-gray-900 border-r border-gray-800 flex-col p-4 overflow-y-auto">
         <div className="mb-8 px-2">
           <h1 className="text-xl font-bold text-violet-400">HabitForge</h1>
           <p className="text-xs text-gray-500">Tu sistema de hábitos</p>
