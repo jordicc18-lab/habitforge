@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useHabitContext } from '../context/HabitContext'
-import { CheckSquare, Flame, Trophy, Target, Plus, X, Trash2 } from 'lucide-react'
+import { CheckSquare, Flame, Trophy, Target, Plus, Trash2 } from 'lucide-react'
 import { collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc } from 'firebase/firestore'
 import { db, auth } from '../lib/firebase'
 import type { TodoItem } from '../types/habit'
