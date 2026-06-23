@@ -58,7 +58,7 @@ function Journal() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-white mb-1">Diario personal</h1>
-            <p className="text-gray-400">{entries.length} entradas</p>
+            <p className="text-white text-sm leading-relaxed whitespace-pre-wrap break-words">{entry.text}</p>
           </div>
           <button onClick={() => setShowForm(true)} className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 rounded-lg transition-colors">
             <Plus size={18} /> Nueva
