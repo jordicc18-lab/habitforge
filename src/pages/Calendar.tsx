@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useHabitContext } from '../context/HabitContext'
-import { ChevronLeft, ChevronRight, Plus, X, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X, Trash2, Pencil, Zap } from 'lucide-react'
 import { collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc } from 'firebase/firestore'
 import { db, auth } from '../lib/firebase'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -35,6 +35,15 @@ function Calendar() {
   const [newEventColor, setNewEventColor] = useState('#8b5cf6')
   const [markColor, setMarkColor] = useState('#f59e0b')
   const [lastClick, setLastClick] = useState<{ date: string, time: number } | null>(null)
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editColor, setEditColor] = useState('')
+
+  // Modo creación rápida
+  const [quickMode, setQuickMode] = useState(false)
+  const [quickTitle, setQuickTitle] = useState('')
+  const [quickColor, setQuickColor] = useState('#8b5cf6')
+  const [quickDates, setQuickDates] = useState<string[]>([])
 
   useEffect(() => {
     const user = auth.currentUser
@@ -51,6 +60,14 @@ function Calendar() {
   }, [])
 
   const handleDayClick = (dateStr: string) => {
+    if (quickMode) {
+      if (quickDates.includes(dateStr)) {
+        setQuickDates(prev => prev.filter(d => d !== dateStr))
+      } else {
+        setQuickDates(prev => [...prev, dateStr])
+      }
+      return
+    }
     const now = Date.now()
     if (lastClick && lastClick.date === dateStr && now - lastClick.time < 400) {
       setSelectedDay(dateStr)
@@ -59,6 +76,18 @@ function Calendar() {
       setLastClick({ date: dateStr, time: now })
       setHoveredDay(dateStr)
     }
+  }
+
+  const saveQuickEvents = async () => {
+    if (!quickTitle.trim() || quickDates.length === 0) return
+    const user = auth.currentUser
+    if (!user) return
+    for (const date of quickDates) {
+      await addDoc(collection(db, 'users', user.uid, 'events'), {
+        title: quickTitle, date, color: quickColor,
+      })
+    }
+    setQuickTitle(''); setQuickDates([]); setQuickMode(false)
   }
 
   const addEvent = async () => {
@@ -77,6 +106,16 @@ function Calendar() {
     await deleteDoc(doc(db, 'users', user.uid, 'events', id))
   }
 
+  const saveEditEvent = async () => {
+    if (!editingEvent || !editTitle.trim()) return
+    const user = auth.currentUser
+    if (!user) return
+    await updateDoc(doc(db, 'users', user.uid, 'events', editingEvent.id), {
+      title: editTitle, color: editColor,
+    })
+    setEditingEvent(null)
+  }
+
   const toggleDayMark = async (dateStr: string) => {
     const user = auth.currentUser
     if (!user) return
@@ -84,9 +123,7 @@ function Calendar() {
     if (existing) {
       await deleteDoc(doc(db, 'users', user.uid, 'dayMarks', existing.id))
     } else {
-      await addDoc(collection(db, 'users', user.uid, 'dayMarks'), {
-        date: dateStr, color: markColor,
-      })
+      await addDoc(collection(db, 'users', user.uid, 'dayMarks'), { date: dateStr, color: markColor })
     }
   }
 
@@ -94,9 +131,7 @@ function Calendar() {
     const user = auth.currentUser
     if (!user) return
     const existing = dayMarks.find(m => m.date === dateStr)
-    if (existing) {
-      await updateDoc(doc(db, 'users', user.uid, 'dayMarks', existing.id), { color })
-    }
+    if (existing) await updateDoc(doc(db, 'users', user.uid, 'dayMarks', existing.id), { color })
   }
 
   const getHabitColor = (dateStr: string) => {
@@ -139,8 +174,42 @@ function Calendar() {
   return (
     <PageTransition>
       <div className="pt-14 md:pt-0">
-        <h1 className="text-2xl font-bold text-white mb-1">Calendario</h1>
-        <p className="text-gray-400 mb-6">Toca para previsualizar · Doble toque para abrir</p>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-2xl font-bold text-white mb-1">Calendario</h1>
+            <p className="text-gray-400 text-sm">
+              {quickMode ? `Selecciona días para "${quickTitle}" (${quickDates.length} seleccionados)` : 'Toca · Doble toque para abrir'}
+            </p>
+          </div>
+          <button
+            onClick={() => { setQuickMode(!quickMode); setQuickDates([]) }}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${quickMode ? 'bg-yellow-500 text-black' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+          >
+            <Zap size={16} />
+            {quickMode ? 'Salir' : 'Rápido'}
+          </button>
+        </div>
+
+        {/* Panel modo rápido */}
+        {quickMode && (
+          <div className="bg-gray-900 border border-yellow-500/30 rounded-xl p-4 mb-4">
+            <p className="text-yellow-400 text-sm font-medium mb-3">⚡ Modo rápido — toca los días para añadir el evento</p>
+            <div className="flex gap-2 mb-3">
+              <input
+                value={quickTitle}
+                onChange={e => setQuickTitle(e.target.value)}
+                placeholder="Título del evento"
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-yellow-500"
+              />
+              <input type="color" value={quickColor} onChange={e => setQuickColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer border-0 bg-transparent" />
+            </div>
+            {quickDates.length > 0 && (
+              <button onClick={saveQuickEvents} className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-medium py-2 rounded-lg text-sm transition-colors">
+                Guardar {quickDates.length} evento{quickDates.length > 1 ? 's' : ''}
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 mb-4">
           <div className="flex items-center justify-between mb-4">
@@ -160,7 +229,7 @@ function Calendar() {
               const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
               const isToday = dateStr === today
               const isSelected = dateStr === selectedDay
-              const isHovered = dateStr === hoveredDay
+              const isQuickSelected = quickDates.includes(dateStr)
               const dayEvents = events.filter(e => e.date === dateStr)
               const habitColor = getHabitColor(dateStr)
               const dayMark = dayMarks.find(m => m.date === dateStr)
@@ -170,17 +239,14 @@ function Calendar() {
                 <div
                   key={day}
                   onClick={() => handleDayClick(dateStr)}
-                  className={`aspect-square rounded-lg flex flex-col items-center justify-between p-0.5 transition-all cursor-pointer relative ${isToday ? 'ring-2 ring-violet-400' : ''} ${isSelected ? 'ring-2 ring-white scale-105' : ''} ${isHovered && !isSelected ? 'ring-1 ring-gray-500' : ''}`}
+                  className={`aspect-square rounded-lg flex flex-col items-center justify-between p-0.5 transition-all cursor-pointer relative ${isToday ? 'ring-2 ring-violet-400' : ''} ${isSelected ? 'ring-2 ring-white scale-105' : ''} ${isQuickSelected ? 'ring-2 ring-yellow-400 scale-105' : ''}`}
                   style={{
-                    backgroundColor: dayMark ? dayMark.color + '33' : habitColor ? habitColor + '44' : '#1f2937',
-                    borderColor: dayMark ? dayMark.color : 'transparent',
+                    backgroundColor: isQuickSelected ? quickColor + '44' : dayMark ? dayMark.color + '33' : habitColor ? habitColor + '44' : '#1f2937',
                     border: dayMark ? `2px solid ${dayMark.color}` : undefined,
                   }}
                 >
                   <span className={`text-xs font-medium mt-0.5 ${isToday ? 'text-violet-400' : 'text-gray-300'}`}>{day}</span>
-                  {completedCount > 0 && (
-                    <span className="text-xs text-violet-400 font-bold">{completedCount}</span>
-                  )}
+                  {completedCount > 0 && <span className="text-xs text-violet-400 font-bold">{completedCount}</span>}
                   {dayEvents.length > 0 && (
                     <div className="flex gap-0.5 mb-0.5">
                       {dayEvents.slice(0, 3).map(e => (
@@ -194,38 +260,22 @@ function Calendar() {
           </div>
 
           <div className="flex items-center gap-3 mt-4 flex-wrap">
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-sm bg-violet-900" />
-              <span className="text-xs text-gray-500">Hábitos</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-full bg-blue-400" />
-              <span className="text-xs text-gray-500">Eventos</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-sm ring-1 ring-yellow-400" />
-              <span className="text-xs text-gray-500">Marcado</span>
-            </div>
+            <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-violet-900" /><span className="text-xs text-gray-500">Hábitos</span></div>
+            <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-blue-400" /><span className="text-xs text-gray-500">Eventos</span></div>
+            <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm ring-1 ring-yellow-400" /><span className="text-xs text-gray-500">Marcado</span></div>
           </div>
         </div>
 
-        {/* Previsualización al primer toque */}
+        {/* Previsualización */}
         <AnimatePresence>
-          {hoveredDay && !selectedDay && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
-              className="bg-gray-900 border border-gray-700 rounded-xl p-4 mb-4"
-            >
+          {hoveredDay && !selectedDay && !quickMode && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className="bg-gray-900 border border-gray-700 rounded-xl p-4 mb-4">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-gray-400 text-sm">{hoveredDay}</p>
-                <button onClick={() => setHoveredDay(null)} className="text-gray-600 hover:text-white">
-                  <X size={16} />
-                </button>
+                <button onClick={() => setHoveredDay(null)} className="text-gray-600 hover:text-white"><X size={16} /></button>
               </div>
               {hoveredEvents.length === 0 ? (
-                <p className="text-gray-600 text-xs">Sin eventos — toca dos veces para abrir el día</p>
+                <p className="text-gray-600 text-xs">Sin eventos — toca dos veces para abrir</p>
               ) : (
                 <div className="flex flex-col gap-1">
                   {hoveredEvents.map(e => (
@@ -241,39 +291,21 @@ function Calendar() {
           )}
         </AnimatePresence>
 
-        {/* Panel completo al doble toque */}
+        {/* Panel día seleccionado */}
         <AnimatePresence>
-          {selectedDay && (
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 16 }}
-              className="bg-gray-900 border border-gray-800 rounded-2xl p-4"
-            >
+          {selectedDay && !quickMode && (
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-white font-semibold">{selectedDay}</h3>
-                <button onClick={() => setSelectedDay(null)} className="text-gray-400 hover:text-white">
-                  <X size={18} />
-                </button>
+                <button onClick={() => setSelectedDay(null)} className="text-gray-400 hover:text-white"><X size={18} /></button>
               </div>
 
-              {/* Marcar día con color */}
+              {/* Marcar día */}
               <div className="flex items-center gap-3 mb-4 p-3 bg-gray-800 rounded-xl">
                 <span className="text-gray-400 text-sm">Marcar día:</span>
-                <input
-                  type="color"
-                  value={markColor}
-                  onChange={e => {
-                    setMarkColor(e.target.value)
-                    if (selectedDayMark) updateMarkColor(selectedDay, e.target.value)
-                  }}
-                  className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
-                />
-                <button
-                  onClick={() => toggleDayMark(selectedDay)}
-                  className={`px-3 py-1 rounded-lg text-sm transition-colors ${selectedDayMark ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-violet-600 hover:bg-violet-700 text-white'}`}
-                >
-                  {selectedDayMark ? 'Quitar marca' : 'Marcar'}
+                <input type="color" value={markColor} onChange={e => { setMarkColor(e.target.value); if (selectedDayMark) updateMarkColor(selectedDay, e.target.value) }} className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent" />
+                <button onClick={() => toggleDayMark(selectedDay)} className={`px-3 py-1 rounded-lg text-sm transition-colors ${selectedDayMark ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-violet-600 hover:bg-violet-700 text-white'}`}>
+                  {selectedDayMark ? 'Quitar' : 'Marcar'}
                 </button>
               </div>
 
@@ -288,12 +320,7 @@ function Calendar() {
 
                 {showAddEvent && (
                   <div className="flex gap-2 mb-3">
-                    <input
-                      value={newEventTitle}
-                      onChange={e => setNewEventTitle(e.target.value)}
-                      placeholder="Nombre del evento"
-                      className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-violet-500"
-                    />
+                    <input value={newEventTitle} onChange={e => setNewEventTitle(e.target.value)} placeholder="Nombre del evento" className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-violet-500" />
                     <input type="color" value={newEventColor} onChange={e => setNewEventColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer border-0 bg-transparent" />
                     <button onClick={addEvent} className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-sm">OK</button>
                   </div>
@@ -304,21 +331,36 @@ function Calendar() {
                 ) : (
                   <div className="flex flex-col gap-2">
                     {selectedDayEvents.map(event => (
-                      <div key={event.id} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ backgroundColor: event.color + '22', border: `1px solid ${event.color}44` }}>
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: event.color }} />
-                          <span className="text-white text-sm">{event.title}</span>
-                        </div>
-                        <button onClick={() => deleteEvent(event.id)} className="text-gray-600 hover:text-red-400">
-                          <Trash2 size={14} />
-                        </button>
+                      <div key={event.id}>
+                        {editingEvent?.id === event.id ? (
+                          <div className="flex gap-2 items-center">
+                            <input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="flex-1 bg-gray-800 border border-violet-500 rounded-lg px-3 py-2 text-white text-sm focus:outline-none" />
+                            <input type="color" value={editColor} onChange={e => setEditColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent" />
+                            <button onClick={saveEditEvent} className="bg-violet-600 text-white px-2 py-1.5 rounded-lg text-xs">OK</button>
+                            <button onClick={() => setEditingEvent(null)} className="text-gray-500 hover:text-white"><X size={14} /></button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between rounded-lg px-3 py-2" style={{ backgroundColor: event.color + '22', border: `1px solid ${event.color}44` }}>
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: event.color }} />
+                              <span className="text-white text-sm">{event.title}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => { setEditingEvent(event); setEditTitle(event.title); setEditColor(event.color) }} className="text-gray-600 hover:text-violet-400">
+                                <Pencil size={14} />
+                              </button>
+                              <button onClick={() => deleteEvent(event.id)} className="text-gray-600 hover:text-red-400">
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
                 )}
               </div>
 
-              {/* Hábitos completados */}
               {selectedDayHabits.length > 0 && (
                 <div className="mb-3">
                   <p className="text-white font-medium text-sm mb-2">✅ Completados ({selectedDayHabits.length})</p>
@@ -333,7 +375,6 @@ function Calendar() {
                 </div>
               )}
 
-              {/* Hábitos pendientes */}
               {selectedDayPending.length > 0 && (
                 <div>
                   <p className="text-white font-medium text-sm mb-2">⏳ Pendientes ({selectedDayPending.length})</p>
