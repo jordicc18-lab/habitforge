@@ -1,26 +1,60 @@
 import { useState, useEffect } from 'react'
 import { collection, addDoc, onSnapshot, deleteDoc, doc } from 'firebase/firestore'
 import { db, auth } from '../lib/firebase'
-import { Plus, X, Trash2, List, Grid3x3 } from 'lucide-react'
+import { Plus, X, Trash2, List, Grid3x3, Upload, Loader } from 'lucide-react'
 import type { ScheduleItem } from '../types/habit'
 import PageTransition from '../components/PageTransition'
+import * as pdfjsLib from 'pdfjs-dist'
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`
 
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 const DAYS_SHORT = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 const CATEGORIES = ['Personal', 'Estudio', 'Trabajo', 'Gimnasio', 'Ocio', 'Otro']
-const HOURS = Array.from({ length: 17 }, (_, i) => i + 6) // 6:00 a 22:00
+const HOURS = Array.from({ length: 17 }, (_, i) => i + 6)
+
+const DAY_KEYWORDS: Record<number, string[]> = {
+  0: ['lunes', 'monday', 'mon', 'l'],
+  1: ['martes', 'tuesday', 'tue', 'm'],
+  2: ['miércoles', 'miercoles', 'wednesday', 'wed', 'x'],
+  3: ['jueves', 'thursday', 'thu', 'j'],
+  4: ['viernes', 'friday', 'fri', 'v'],
+  5: ['sábado', 'sabado', 'saturday', 'sat', 's'],
+  6: ['domingo', 'sunday', 'sun', 'd'],
+}
+
+function detectDay(text: string): number {
+  const lower = text.toLowerCase()
+  for (const [day, keywords] of Object.entries(DAY_KEYWORDS)) {
+    if (keywords.some(k => lower.includes(k))) return Number(day)
+  }
+  return -1
+}
+
+function extractTimeRange(text: string): { start: string, end: string } | null {
+  const match = text.match(/(\d{1,2})[:\s]?(\d{2})?\s*[-–a]\s*(\d{1,2})[:\s]?(\d{2})?/)
+  if (!match) return null
+  const startH = match[1].padStart(2, '0')
+  const startM = (match[2] || '00').padStart(2, '0')
+  const endH = match[3].padStart(2, '0')
+  const endM = (match[4] || '00').padStart(2, '0')
+  return { start: `${startH}:${startM}`, end: `${endH}:${endM}` }
+}
+
+const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4']
 
 function Schedule() {
   const [items, setItems] = useState<ScheduleItem[]>([])
   const [view, setView] = useState<'grid' | 'list'>('list')
   const [showForm, setShowForm] = useState(false)
-  const [, setSelectedDay] = useState<number | null>(null)
   const [title, setTitle] = useState('')
   const [day, setDay] = useState(0)
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:00')
   const [color, setColor] = useState('#8b5cf6')
   const [category, setCategory] = useState('Personal')
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<string | null>(null)
 
   useEffect(() => {
     const user = auth.currentUser
@@ -39,8 +73,7 @@ function Schedule() {
     await addDoc(collection(db, 'users', user.uid, 'schedule'), {
       title, day, startTime, endTime, color, category,
     })
-    setTitle('')
-    setShowForm(false)
+    setTitle(''); setShowForm(false)
   }
 
   const deleteItem = async (id: string) => {
@@ -50,9 +83,7 @@ function Schedule() {
   }
 
   const openFormForDay = (d: number) => {
-    setDay(d)
-    setSelectedDay(d)
-    setShowForm(true)
+    setDay(d); setShowForm(true)
   }
 
   const sortedItemsByDay = (d: number) =>
@@ -61,6 +92,64 @@ function Schedule() {
   const timeToMinutes = (t: string) => {
     const [h, m] = t.split(':').map(Number)
     return h * 60 + m
+  }
+
+  const importFromPDF = async (file: File) => {
+    setImporting(true)
+    setImportResult(null)
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+      let fullText = ''
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i)
+        const content = await page.getTextContent()
+        fullText += content.items.map((item: unknown) => (item as { str: string }).str).join(' ') + '\n'
+      }
+
+      const lines = fullText.split('\n').filter(l => l.trim().length > 3)
+      const user = auth.currentUser
+      if (!user) return
+
+      let added = 0
+      let currentDay = -1
+      const colorMap: Record<string, string> = {}
+      let colorIndex = 0
+
+      for (const line of lines) {
+        const dayDetected = detectDay(line)
+        if (dayDetected !== -1) currentDay = dayDetected
+
+        const timeRange = extractTimeRange(line)
+        if (timeRange && currentDay !== -1) {
+          const cleanTitle = line
+            .replace(/\d{1,2}[:\s]?\d{0,2}\s*[-–a]\s*\d{1,2}[:\s]?\d{0,2}/g, '')
+            .replace(/lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo/gi, '')
+            .trim()
+
+          if (cleanTitle.length > 1) {
+            if (!colorMap[cleanTitle]) {
+              colorMap[cleanTitle] = COLORS[colorIndex % COLORS.length]
+              colorIndex++
+            }
+            await addDoc(collection(db, 'users', user.uid, 'schedule'), {
+              title: cleanTitle,
+              day: currentDay,
+              startTime: timeRange.start,
+              endTime: timeRange.end,
+              color: colorMap[cleanTitle],
+              category: 'Estudio',
+            })
+            added++
+          }
+        }
+      }
+
+      setImportResult(added > 0 ? `✅ Se importaron ${added} actividades correctamente` : '⚠️ No se detectaron actividades. Asegúrate de que el PDF tenga el formato correcto (día + hora + actividad)')
+    } catch {
+      setImportResult('❌ Error al leer el PDF. Inténtalo de nuevo.')
+    }
+    setImporting(false)
   }
 
   return (
@@ -72,20 +161,25 @@ function Schedule() {
             <p className="text-gray-400">Organiza tu semana</p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setView(view === 'grid' ? 'list' : 'grid')}
-              className="bg-gray-800 hover:bg-gray-700 text-gray-300 p-2.5 rounded-lg transition-colors"
-            >
+            <button onClick={() => setView(view === 'grid' ? 'list' : 'grid')} className="bg-gray-800 hover:bg-gray-700 text-gray-300 p-2.5 rounded-lg transition-colors">
               {view === 'grid' ? <List size={18} /> : <Grid3x3 size={18} />}
             </button>
-            <button
-              onClick={() => { setSelectedDay(null); setShowForm(true) }}
-              className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 rounded-lg transition-colors"
-            >
-              <Plus size={18} />
-              Nuevo
+            <button onClick={() => setShowForm(true)} className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 rounded-lg transition-colors">
+              <Plus size={18} /> Nuevo
             </button>
           </div>
+        </div>
+
+        {/* Importar PDF */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
+          <h2 className="text-white font-semibold mb-2">Importar horario desde PDF</h2>
+          <p className="text-gray-500 text-xs mb-3">El PDF debe contener el día, hora y nombre de la actividad. Ej: "Lunes 9:00-10:00 Matemáticas"</p>
+          <label className={`flex items-center justify-center gap-2 border-2 border-dashed border-gray-700 rounded-xl p-4 cursor-pointer transition-colors ${importing ? 'opacity-50' : 'hover:border-violet-500'}`}>
+            {importing ? <Loader size={20} className="text-violet-400 animate-spin" /> : <Upload size={20} className="text-gray-400" />}
+            <span className="text-gray-400 text-sm">{importing ? 'Importando...' : 'Seleccionar PDF'}</span>
+            <input type="file" accept=".pdf" className="hidden" onChange={e => { if (e.target.files?.[0]) importFromPDF(e.target.files[0]) }} disabled={importing} />
+          </label>
+          {importResult && <p className="text-sm mt-3">{importResult}</p>}
         </div>
 
         {/* VISTA LISTA */}
@@ -121,7 +215,7 @@ function Schedule() {
           </div>
         )}
 
-        {/* VISTA GRID TIPO HORARIO */}
+        {/* VISTA GRID */}
         {view === 'grid' && (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-2 overflow-x-auto">
             <div className="min-w-[700px]">
@@ -133,18 +227,12 @@ function Schedule() {
               </div>
               {HOURS.map(hour => (
                 <div key={hour} className="grid grid-cols-8 gap-1 mb-1" style={{ height: '36px' }}>
-                  <div className="text-xs text-gray-500 text-right pr-2 flex items-center justify-end">
-                    {hour}:00
-                  </div>
+                  <div className="text-xs text-gray-500 text-right pr-2 flex items-center justify-end">{hour}:00</div>
                   {Array.from({ length: 7 }, (_, d) => {
                     const itemHere = items.find(i => i.day === d && timeToMinutes(i.startTime) <= hour * 60 && timeToMinutes(i.endTime) > hour * 60)
                     return (
-                      <div
-                        key={d}
-                        onClick={() => !itemHere && openFormForDay(d)}
-                        className="rounded cursor-pointer transition-colors hover:bg-gray-800"
-                        style={{ backgroundColor: itemHere ? itemHere.color + '33' : '#111827', borderLeft: itemHere ? `2px solid ${itemHere.color}` : undefined }}
-                      >
+                      <div key={d} onClick={() => !itemHere && openFormForDay(d)} className="rounded cursor-pointer transition-colors hover:bg-gray-800"
+                        style={{ backgroundColor: itemHere ? itemHere.color + '33' : '#111827', borderLeft: itemHere ? `2px solid ${itemHere.color}` : undefined }}>
                         {itemHere && timeToMinutes(itemHere.startTime) >= hour * 60 && timeToMinutes(itemHere.startTime) < hour * 60 + 60 && (
                           <p className="text-white text-[10px] px-1 truncate leading-tight pt-0.5">{itemHere.title}</p>
                         )}
@@ -163,9 +251,7 @@ function Schedule() {
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-md">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-white font-bold text-lg">Nueva tarea</h2>
-                <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white">
-                  <X size={20} />
-                </button>
+                <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white"><X size={20} /></button>
               </div>
               <div className="flex flex-col gap-4">
                 <div>
@@ -198,9 +284,7 @@ function Schedule() {
                   <label className="text-gray-400 text-sm mb-2 block">Color</label>
                   <input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer border-0 bg-transparent" />
                 </div>
-                <button onClick={addItem} className="w-full bg-violet-600 hover:bg-violet-700 text-white font-medium py-2.5 rounded-lg transition-colors mt-2">
-                  Guardar
-                </button>
+                <button onClick={addItem} className="w-full bg-violet-600 hover:bg-violet-700 text-white font-medium py-2.5 rounded-lg transition-colors mt-2">Guardar</button>
               </div>
             </div>
           </div>
